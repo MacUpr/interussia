@@ -1,4 +1,4 @@
-import React, { useMemo, useCallback } from 'react';
+import React, { useMemo, useCallback, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Canvas } from '@react-three/fiber';
 import BuildingScene from '../scene/BuildingScene';
@@ -8,6 +8,7 @@ import { useNavigationStore } from '../store/navigationStore';
 import { pathToVector3Array, createDefaultMapper, map2DTo3D } from '../engine/coordinateMapper';
 import { GROUND_FLOOR } from '../data/building';
 import { COLORS, SCENE_CONFIG } from '../utils/constants';
+import { requestOrientationPermission, isOrientationSupported } from '../hooks/useDeviceOrientation';
 
 /**
  * ARNavigationView — full-screen AR navigation viewport.
@@ -35,6 +36,17 @@ const ARNavigationView: React.FC = () => {
   const cancelNavigation = useNavigationStore((s) => s.cancelNavigation);
   const updatePosition = useNavigationStore((s) => s.updatePosition);
   const scannedAnchor = useNavigationStore((s) => s.scannedAnchor);
+
+  // ── Device compass (AR heading) ────────────────────────
+  const [deviceHeading, setDeviceHeading] = useState(false);
+  const toggleCompass = useCallback(async () => {
+    if (deviceHeading) {
+      setDeviceHeading(false);
+      return;
+    }
+    const granted = await requestOrientationPermission();
+    setDeviceHeading(granted);
+  }, [deviceHeading]);
 
   // ── Coordinate mapper ──────────────────────────────────
   const mapper = useMemo(() => createDefaultMapper(), []);
@@ -116,6 +128,7 @@ const ARNavigationView: React.FC = () => {
           onPlayerMove={handlePlayerMove}
           playerStart={playerStart}
           navigationActive={phase === 'navigating' || phase === 'arrived'}
+          deviceHeading={deviceHeading}
         />
       </Canvas>
 
@@ -152,6 +165,37 @@ const ARNavigationView: React.FC = () => {
           ✕
         </button>
       </div>
+
+      {/* ── Compass / device-heading toggle ───────────────── */}
+      {isOrientationSupported() && (
+        <div
+          className="hud-overlay"
+          style={{ position: 'absolute', top: 20, left: 76, zIndex: 210 }}
+        >
+          <button
+            className="glass-card--static btn-icon"
+            style={{
+              width: 44,
+              height: 44,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: '1.2rem',
+              color: deviceHeading ? COLORS.accentPrimary : COLORS.textSecondary,
+              cursor: 'pointer',
+              border: deviceHeading
+                ? `1px solid ${COLORS.accentPrimary}`
+                : '1px solid rgba(255,255,255,0.15)',
+              borderRadius: 12,
+            }}
+            onClick={toggleCompass}
+            aria-label="Toggle device compass heading"
+            title={deviceHeading ? 'Compass on' : 'Use device compass'}
+          >
+            🧭
+          </button>
+        </div>
+      )}
 
       {/* ── Minimap ───────────────────────────────────────── */}
       <div

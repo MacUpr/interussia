@@ -28,6 +28,7 @@ import {
   getDestinationsByCategory,
   getDestinationsByFloor,
 } from '../data/destinations';
+import { getDestinations } from '../data/repository';
 
 // ── Store Interface ─────────────────────────────────────────
 
@@ -45,6 +46,8 @@ export interface NavigationStore {
   totalDistanceRemaining: number;
   searchQuery: string;
   filteredDestinations: PointOfInterest[];
+  /** Full dataset of POIs (local by default; replaced by hydrateFromRemote). */
+  destinations: PointOfInterest[];
 
   // ── Map state (v2 — 2GIS-style) ──
   selectedPOI: PointOfInterest | null;
@@ -62,6 +65,8 @@ export interface NavigationStore {
   cancelNavigation: () => void;
   setSearchQuery: (query: string) => void;
   reset: () => void;
+  /** Loads POI data from the remote backend (Supabase) when configured. */
+  hydrateFromRemote: () => Promise<void>;
 
   // ── Map actions (v2) ──
   selectPOI: (poi: PointOfInterest) => void;
@@ -86,11 +91,12 @@ function computeFilteredDestinations(
   query: string,
   category: POICategory | null,
   floorLevel: number,
+  dataset: PointOfInterest[] = DESTINATIONS,
 ): PointOfInterest[] {
   const hasQuery = query.trim().length > 0;
 
   // Start with search-filtered list
-  let results = hasQuery ? searchDestinations(query) : [...DESTINATIONS];
+  let results = hasQuery ? searchDestinations(query, dataset) : [...dataset];
 
   // Floor scoping:
   //  - When BROWSING (no query), scope the list to the active floor so the
@@ -153,6 +159,7 @@ export const useNavigationStore = create<NavigationStore>((set, get) => ({
   totalDistanceRemaining: 0,
   searchQuery: '',
   filteredDestinations: getDestinationsByFloor('FLOOR_GROUND'),
+  destinations: DESTINATIONS,
 
   // v2 map state
   selectedPOI: null,
@@ -186,7 +193,7 @@ export const useNavigationStore = create<NavigationStore>((set, get) => ({
       distanceToNext: 0,
       totalDistanceRemaining: 0,
       searchQuery: '',
-      filteredDestinations: computeFilteredDestinations('', null, floorLevel),
+      filteredDestinations: computeFilteredDestinations('', null, floorLevel, get().destinations),
       // Keep map in browsing mode
       mapViewState: 'browsing',
       bottomSheetState: 'hidden',
@@ -268,7 +275,7 @@ export const useNavigationStore = create<NavigationStore>((set, get) => ({
         mapViewState: 'browsing',
         bottomSheetState: 'hidden',
         selectedPOI: null,
-        filteredDestinations: computeFilteredDestinations(searchQuery, categoryFilter, currentFloorIndex),
+        filteredDestinations: computeFilteredDestinations(searchQuery, categoryFilter, currentFloorIndex, get().destinations),
       });
     } else {
       get().reset();
@@ -279,7 +286,7 @@ export const useNavigationStore = create<NavigationStore>((set, get) => ({
     const { categoryFilter, currentFloorIndex } = get();
     set({
       searchQuery: query,
-      filteredDestinations: computeFilteredDestinations(query, categoryFilter, currentFloorIndex),
+      filteredDestinations: computeFilteredDestinations(query, categoryFilter, currentFloorIndex, get().destinations),
     });
   },
 
@@ -300,6 +307,7 @@ export const useNavigationStore = create<NavigationStore>((set, get) => ({
       totalDistanceRemaining: 0,
       searchQuery: '',
       filteredDestinations: getDestinationsByFloor('FLOOR_GROUND'),
+      destinations: get().destinations,
       // v2 state
       selectedPOI: null,
       currentFloorIndex: 0,
@@ -308,6 +316,26 @@ export const useNavigationStore = create<NavigationStore>((set, get) => ({
       categoryFilter: null,
       viewMode: 'map',
     });
+  },
+
+  hydrateFromRemote: async (): Promise<void> => {
+    try {
+      const remote = await getDestinations();
+      if (!remote || remote.length === 0) return;
+      const { searchQuery, categoryFilter, currentFloorIndex } = get();
+      set({
+        destinations: remote,
+        filteredDestinations: computeFilteredDestinations(
+          searchQuery,
+          categoryFilter,
+          currentFloorIndex,
+          remote,
+        ),
+      });
+    } catch (err) {
+      // Repository already falls back to local data; this is a safety net.
+      console.warn('[store] hydrateFromRemote failed:', err);
+    }
   },
 
   // ── Map Actions (v2) ──────────────────────────────────────
@@ -332,7 +360,7 @@ export const useNavigationStore = create<NavigationStore>((set, get) => ({
     const { searchQuery, categoryFilter } = get();
     set({
       currentFloorIndex: level,
-      filteredDestinations: computeFilteredDestinations(searchQuery, categoryFilter, level),
+      filteredDestinations: computeFilteredDestinations(searchQuery, categoryFilter, level, get().destinations),
       // Clear POI selection when changing floors
       selectedPOI: null,
       bottomSheetState: 'hidden',
@@ -351,7 +379,7 @@ export const useNavigationStore = create<NavigationStore>((set, get) => ({
     const { searchQuery, currentFloorIndex } = get();
     set({
       categoryFilter: cat,
-      filteredDestinations: computeFilteredDestinations(searchQuery, cat, currentFloorIndex),
+      filteredDestinations: computeFilteredDestinations(searchQuery, cat, currentFloorIndex, get().destinations),
     });
   },
 

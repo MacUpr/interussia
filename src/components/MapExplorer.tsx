@@ -65,6 +65,13 @@ const MapExplorer: React.FC = () => {
   const selectDestination = useNavigationStore((s) => s.selectDestination);
   const cancelNavigation = useNavigationStore((s) => s.cancelNavigation);
   const startNavigation = useNavigationStore((s) => s.startNavigation);
+  const hydrateFromRemote = useNavigationStore((s) => s.hydrateFromRemote);
+
+  // Load POI data from the remote backend (Supabase) once on mount.
+  // No-op when Supabase is not configured — the app uses local data.
+  useEffect(() => {
+    void hydrateFromRemote();
+  }, [hydrateFromRemote]);
 
   // ── Local State ───────────────────────────────────────────
   const [activeFloorLevel, setActiveFloorLevel] = useState(0);

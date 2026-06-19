@@ -7,6 +7,7 @@ import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 
 import { SCENE_CONFIG } from '../utils/constants';
+import { useDeviceOrientation } from '../hooks/useDeviceOrientation';
 
 // ── Props ───────────────────────────────────────────────────
 
@@ -14,6 +15,8 @@ interface PlayerCameraProps {
   onPositionChange?: (x: number, z: number) => void;
   startPosition?: { x: number; z: number };
   enabled?: boolean;
+  /** When true, drive heading (yaw) from the device compass sensor. */
+  deviceHeading?: boolean;
 }
 
 // ── Internal state (non-reactive, lives across frames) ──────
@@ -43,8 +46,10 @@ export default function PlayerCamera({
   onPositionChange,
   startPosition,
   enabled = true,
+  deviceHeading = false,
 }: PlayerCameraProps) {
   const { camera, gl } = useThree();
+  const { readingRef, live: headingLive } = useDeviceOrientation(deviceHeading);
   const state = useRef<MotionState>({
     yaw: 0,
     pitch: 0,
@@ -187,6 +192,18 @@ export default function PlayerCamera({
     camera.position.x += -sinY * fwd + cosY * str;
     camera.position.z += -cosY * fwd - sinY * str;
     camera.position.y = SCENE_CONFIG.cameraHeight;
+
+    // Device compass: when enabled and real sensor data is arriving,
+    // drive heading from the phone's orientation. Falls back silently
+    // to mouse-look when no reading is available.
+    if (deviceHeading && headingLive && readingRef.current.heading !== null) {
+      s.yaw = -THREE.MathUtils.degToRad(readingRef.current.heading);
+      if (readingRef.current.beta !== null) {
+        // Map device tilt (beta ~90° when held upright) to a gentle pitch.
+        const tilt = THREE.MathUtils.degToRad(readingRef.current.beta - 90);
+        s.pitch = THREE.MathUtils.clamp(tilt, -MAX_PITCH, MAX_PITCH);
+      }
+    }
 
     // Apply rotation
     camera.rotation.set(s.pitch, s.yaw, 0, 'YXZ');

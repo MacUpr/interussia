@@ -82,57 +82,91 @@ In the codebase, database integration is documented via comments in [src/types/i
 
 ---
 
-## 4. What is Missing (Product Roadmap & Improvements)
+## 4. Implementation Status
 
-This section highlights features, bugs, or architectural improvements that are needed to transition the project from a local web-first prototype to a production-ready application.
+This section was updated after a completion pass. Most of the original roadmap is
+now implemented and the build + test suite are green. Items are grouped by their
+real status.
 
-### ✅ Resolved Issues
-* **QRScanner Router Mismatch (FIXED):** Earlier drafts of [src/components/QRScanner.tsx](src/components/QRScanner.tsx) navigated to a non-existent `/search` route after a simulated scan. The component now correctly returns the user to the home route `/` (see `navigate('/')` on the post-scan timeout and the back button). No `/search` route is referenced anymore.
+### ✅ Done and verified (build + tests pass)
 
-### 🛠️ Core Functional Implementations Missing
-1. **Live Database Integration (Supabase Connection):**
-   * *Current:* All POI data, building coordinates, and QR payloads are hardcoded locally.
-   * *Missing:* Setup of `@supabase/supabase-js` client library, API hooks to fetch records from database tables dynamically, and synchronization of building graphs.
-2. **Camera-Based Hardware QR Scanning:**
-   * *Current:* QR codes are simulated with buttons.
-   * *Missing:* Integration of browser media APIs via `html5-qrcode` or `@yudiel/react-qr-scanner` to read physical QR codes via mobile cameras.
-3. **Mobile Sensors Fusion for AR view:**
-   * *Current:* The 3D AR camera uses fixed mock orientations.
-   * *Missing:* Integration with the `DeviceOrientation` API and Magnetometer/Compass sensors to rotate the 3D viewport dynamically relative to the physical orientation of the phone.
-4. **Dynamic Multi-Floor Path Overlays on 2D Map:**
-   * *Current:* The 2D Canvas shows paths only on the active floor.
-   * *Missing:* Render indicators on the 2D plan representing path segments on other floors (e.g. "take elevator to F1" represented by a highlighted zone or dotted line on the ground floor).
-5. **Cross-Floor Global Search UI (DONE):**
-   * *Implemented:* Search now returns matches across **all floors**, not just the active one. Each result row shows a floor badge (e.g. `G`, `F1`, `F2`), current-floor matches are surfaced first, and selecting a result automatically switches to that POI's floor. Browsing (no query) still scopes the list to the active floor so the list and map stay in sync. Logic lives in `computeFilteredDestinations` in [src/store/navigationStore.ts](src/store/navigationStore.ts) and is covered by [tests/crossFloorSearch.test.ts](tests/crossFloorSearch.test.ts).
-6. **Offline PWA Capabilities:**
-   * *Current:* Standard client SPA.
-   * *Missing:* Service workers to cache map layout geometries and pathfinding logic, allowing offline use inside buildings where internet connectivity is poor.
-7. **Visual Map Editor (CMS):**
-   * *Current:* Map edits require manually configuring vertices in typescript arrays.
-   * *Missing:* An administration visual editor to draw regions, place waypoints, and wire pathways.
+* **QRScanner routing bug** — fixed. The scanner returns to `/` after a scan; no
+  `/search` route is referenced. (`src/components/QRScanner.tsx`)
+* **Cross-floor global search** — search spans all floors with per-result floor
+  badges (`G`, `F1`, `F2`), current-floor matches first, and automatic floor switch
+  on selection. Browsing (no query) stays scoped to the active floor.
+  (`computeFilteredDestinations` in `src/store/navigationStore.ts`; covered by
+  `tests/crossFloorSearch.test.ts`)
+* **Multi-floor path overlay on the 2D map** — the canvas splits the route by floor
+  (`splitPathByFloor`), draws only the active floor's segment, and renders a pulsing
+  connector badge ("🛗 ↑ F1") at the elevator/stairs where the route changes level.
+  (`src/components/FloorPlanCanvas.tsx`)
+* **Supabase data layer (optional, with fallback)** —
+  `src/data/supabaseClient.ts` builds a client only when `VITE_SUPABASE_URL` /
+  `VITE_SUPABASE_ANON_KEY` are set; `src/data/repository.ts` exposes async getters
+  (`getDestinations`, `getQRAnchors`, `getFloors`) that read remotely when configured
+  and **fall back to local data on any error/empty result**. `MapExplorer` calls
+  `hydrateFromRemote()` on mount (no-op without config). Schema in
+  `supabase/schema.sql`; env vars documented in `.env.example`.
+* **Camera-based QR scanning** — `html5-qrcode` (lazy-loaded) behind a "📷 Use camera"
+  toggle in `QRScanner.tsx`; the simulation grid stays as a fallback when the camera
+  is denied/unavailable.
+* **Device sensor fusion for AR** — `src/hooks/useDeviceOrientation.ts` reads the
+  compass; a 🧭 toggle in `ARNavigationView` requests motion permission (iOS-safe) and
+  drives the first-person camera heading, falling back to mouse-look without a sensor.
+* **Offline PWA** — `public/manifest.webmanifest` + `public/sw.js` (cache-first app
+  shell, network-first navigations), registered in `src/main.tsx` for production.
+* **Compass control + dead code** — the previously-dead 🧭 placeholder in
+  `MapExplorer` now recenters/fits the floor; unrouted legacy components
+  `Dashboard.tsx` and `DestinationSearch.tsx` were removed.
+
+### 🔬 Implemented, but validate on real hardware
+
+These build cleanly and run, but can't be exercised in a desktop/CI environment, so
+their final tuning should happen on a phone:
+
+* **Camera QR runtime** — lighting/focus and payload format. The decoder accepts the
+  raw anchor payload or a URL whose last path segment is the payload.
+* **Compass heading** — the zero-offset and sign of the heading→yaw mapping can vary
+  by device/OS; adjust in `src/scene/PlayerCamera.tsx` if north doesn't line up.
+
+### 🛠️ Still open (separate sub-project)
+
+* **Visual Map Editor (CMS)** — map edits still mean editing TypeScript arrays in
+  `src/data/`. A drawing-based admin tool to place regions/waypoints/edges and write
+  back to Supabase is a self-contained milestone; the schema above is its backend.
 
 ---
 
-## 5. Changelog
+## 5. Running & Configuring
 
-### v2.1 — Maintenance & Cross-Floor Search
-* **Cross-floor global search implemented** (roadmap item 4.5). Search spans all floors with per-result floor badges, active-floor-first ordering, and automatic floor switching on selection. Covered by `tests/crossFloorSearch.test.ts` (4 new tests).
-* **Compass control wired up.** The 🧭 button in `MapExplorer` was a dead placeholder; it now recenters and fits the active floor to the viewport via a `resetViewToken` prop on `FloorPlanCanvas`.
-* **QRScanner routing bug confirmed fixed** (was already resolved in code; docs updated to match).
-* **Dead code removed.** The unrouted legacy components `Dashboard.tsx` and `DestinationSearch.tsx` were deleted (no references anywhere in `src/`).
-* **Status:** `npm run build` passes; `vitest` suite green at **27/27** tests.
+```bash
+npm install
+npm run dev        # dev server (http://localhost:5173)
+npm run build      # type-check + production build
+npx vitest run     # test suite (27 tests)
+```
+
+To enable the Supabase backend: copy `.env.example` to `.env.local`, fill in your
+project URL and anon key, run `supabase/schema.sql` in the Supabase SQL editor, and
+populate the tables. Without these, the app runs entirely on bundled local data, so
+nothing breaks in development or offline.
 
 ---
 
-## 6. Remaining Work — and why it can't be "finished" in a sandbox
+## 6. Changelog
 
-The items below are deliberately **not** implemented blind, because each requires a real device, an external service, or live credentials to build and verify correctly. Implementing them without the ability to run them would only add unverified code to the repo.
+### v2.2 — Completion pass
+* Multi-floor route overlay on the 2D map (connector badges for elevator/stairs).
+* Supabase data layer with automatic local fallback (`supabaseClient`, `repository`,
+  `schema.sql`, `.env.example`, `hydrateFromRemote`).
+* Real camera QR scanning via `html5-qrcode` (lazy-loaded) with simulation fallback.
+* Device-orientation/compass heading for the AR view (`useDeviceOrientation`).
+* Offline PWA (manifest + service worker).
+* Build green; vitest **27/27**.
 
-| Roadmap item | Blocker | What's needed to finish it |
-|---|---|---|
-| Live Supabase integration | Needs a real Supabase project + URL/anon key | Create the project, add `@supabase/supabase-js`, set `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY`, run the SQL in `src/types/index.ts`, swap `src/data/*` for fetch hooks with local fallback |
-| Camera-based QR scanning | Needs a physical camera (getUserMedia) | Add `html5-qrcode` or `@yudiel/react-qr-scanner`, request camera permission, map decoded payloads to `findAnchorByPayload` |
-| Mobile sensor fusion (AR) | Needs a real phone gyroscope/compass | Wire `DeviceOrientationEvent` (iOS requires a permission gesture) into `PlayerCamera` |
-| Multi-floor path overlays on 2D map | Canvas geometry change; needs visual QA in a browser | Derive each path waypoint's floor (by ID prefix), draw only the active-floor segment, add a connector marker ("→ take elevator to F1") |
-| Offline PWA | Buildable, but real value needs on-site testing | Add `vite-plugin-pwa`, precache map/pathfinding assets, test offline inside the target building |
-| Visual map editor (CMS) | Effectively a separate sub-project | Canvas editor to draw regions/waypoints/edges and export the `Floor[]` structure |
+### v2.1 — Maintenance & cross-floor search
+* Cross-floor global search with floor badges and active-floor-first ordering
+  (`tests/crossFloorSearch.test.ts`).
+* Wired the previously-dead compass/recenter control in `MapExplorer`.
+* Confirmed the QRScanner routing fix; removed unrouted legacy components.

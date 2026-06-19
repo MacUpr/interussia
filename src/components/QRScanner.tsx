@@ -1,8 +1,8 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { COLORS } from '../utils/constants';
 import { useNavigationStore } from '../store/navigationStore';
-import { QR_ANCHORS } from '../data/qrAnchors';
+import { QR_ANCHORS, findAnchorByPayload } from '../data/qrAnchors';
 import type { QRAnchor } from '../types/index';
 
 // ── Injected keyframes ────────────────────────────────────────
@@ -60,6 +60,13 @@ const QRScanner: React.FC = () => {
   const [scannedId, setScannedId] = useState<string | null>(null);
   const [showSuccess, setShowSuccess] = useState(false);
 
+  // ── Real camera scanning (html5-qrcode) with graceful fallback ──
+  const [cameraOn, setCameraOn] = useState(false);
+  const [cameraError, setCameraError] = useState<string | null>(null);
+  // Holds the Html5Qrcode instance so we can stop/clear it on cleanup.
+  const scannerRef = useRef<{ stop: () => Promise<void>; clear: () => void } | null>(null);
+  const handledRef = useRef(false);
+
   useEffect(() => {
     const id = 'scanner-keyframes';
     if (!document.getElementById(id)) {
@@ -69,6 +76,77 @@ const QRScanner: React.FC = () => {
       document.head.appendChild(style);
     }
   }, []);
+
+  /** Resolve a decoded QR string to an anchor and run the scan flow. */
+  const onDecode = useCallback(
+    (decodedText: string) => {
+      if (handledRef.current) return;
+      // The QR may encode the raw payload or a URL ending in the payload.
+      const candidates = [decodedText.trim(), decodedText.trim().split('/').pop() ?? ''];
+      let anchor: QRAnchor | undefined;
+      for (const c of candidates) {
+        anchor = findAnchorByPayload(c);
+        if (anchor) break;
+      }
+      if (!anchor) {
+        setCameraError(`Unrecognized code: ${decodedText.slice(0, 32)}`);
+        return;
+      }
+      handledRef.current = true;
+      setScannedId(anchor.id);
+      scanQRCode(anchor.qrPayload);
+      setShowSuccess(true);
+      setTimeout(() => navigate('/'), 1100);
+    },
+    [navigate, scanQRCode],
+  );
+
+  // Start/stop the camera scanner when toggled.
+  useEffect(() => {
+    if (!cameraOn) return;
+    let cancelled = false;
+    setCameraError(null);
+    handledRef.current = false;
+
+    (async () => {
+      try {
+        const { Html5Qrcode } = await import('html5-qrcode');
+        if (cancelled) return;
+        const instance = new Html5Qrcode('qr-reader');
+        scannerRef.current = instance;
+        await instance.start(
+          { facingMode: 'environment' },
+          { fps: 10, qrbox: 220 },
+          (decodedText: string) => onDecode(decodedText),
+          () => {
+            /* per-frame decode misses are normal; ignore */
+          },
+        );
+      } catch (err) {
+        if (!cancelled) {
+          setCameraError(
+            'Could not access the camera. Check permissions or use simulation mode below.',
+          );
+          setCameraOn(false);
+        }
+        console.warn('[qr] camera start failed:', err);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      const inst = scannerRef.current;
+      scannerRef.current = null;
+      if (inst) {
+        inst
+          .stop()
+          .then(() => inst.clear())
+          .catch(() => {
+            /* already stopped */
+          });
+      }
+    };
+  }, [cameraOn, onDecode]);
 
   /** Handle anchor selection: scan, show success, then navigate. */
   const handleScan = useCallback(
@@ -113,6 +191,18 @@ const QRScanner: React.FC = () => {
         }}
       >
         <div style={{ position: 'relative', width: 240, height: 240 }}>
+          {/* Real camera feed (html5-qrcode injects a <video> here) */}
+          <div
+            id="qr-reader"
+            style={{
+              position: 'absolute',
+              inset: 0,
+              borderRadius: 8,
+              overflow: 'hidden',
+              display: cameraOn ? 'block' : 'none',
+              background: '#000',
+            }}
+          />
           {/* Dark surrounding vignette */}
           <div
             style={{
@@ -199,6 +289,30 @@ const QRScanner: React.FC = () => {
       >
         {showSuccess ? 'Anchor scanned successfully!' : 'Point camera at a QR code anchor'}
       </p>
+
+      {/* ── Camera toggle + errors ──────────────────────────── */}
+      {!showSuccess && (
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, marginBottom: 18, padding: '0 24px' }}>
+          <button
+            className="btn"
+            style={{
+              background: cameraOn ? 'rgba(239,68,68,0.15)' : COLORS.accentPrimary,
+              color: cameraOn ? COLORS.accentDanger ?? '#ef4444' : '#0a0e1a',
+              fontWeight: 600,
+              padding: '10px 18px',
+              borderRadius: 10,
+            }}
+            onClick={() => setCameraOn((v) => !v)}
+          >
+            {cameraOn ? '■ Stop camera' : '📷 Use camera'}
+          </button>
+          {cameraError && (
+            <span style={{ color: COLORS.accentWarning, fontSize: '0.78rem', textAlign: 'center' }}>
+              {cameraError}
+            </span>
+          )}
+        </div>
+      )}
 
       {/* ── Simulation Anchor Grid ──────────────────────────── */}
       <div

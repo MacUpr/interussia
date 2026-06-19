@@ -19,6 +19,96 @@ import {
   CATEGORY_ICONS,
   INFRASTRUCTURE_CATEGORIES,
 } from '../utils/constants';
+import { ALL_FLOORS } from '../data/building';
+
+// ── Multi-floor route helpers ───────────────────────────────
+
+/** Short display label for a floor id, e.g. 'G', 'F1', 'F2'. */
+function floorShortLabel(floorId: string): string {
+  const f = ALL_FLOORS.find((fl) => fl.id === floorId);
+  if (!f) return '?';
+  return f.level === 0 ? 'G' : `F${f.level}`;
+}
+
+/** Level (ordinal) for a floor id; defaults to 0 if unknown. */
+function floorLevelOf(floorId: string): number {
+  return ALL_FLOORS.find((fl) => fl.id === floorId)?.level ?? 0;
+}
+
+/** Builds a rounded-rectangle path on the context (caller then fills/strokes). */
+function roundRect(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  r: number,
+): void {
+  const radius = Math.min(r, w / 2, h / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + radius, y);
+  ctx.arcTo(x + w, y, x + w, y + h, radius);
+  ctx.arcTo(x + w, y + h, x, y + h, radius);
+  ctx.arcTo(x, y + h, x, y, radius);
+  ctx.arcTo(x, y, x + w, y, radius);
+  ctx.closePath();
+}
+
+/**
+ * A connector point where the route leaves the current floor.
+ * Drawn on the 2D plan as a badge ("Elevator → F1 ↑").
+ */
+interface RouteTransition {
+  x: number;
+  y: number;
+  connectorType: 'stairs' | 'elevator' | 'escalator';
+  targetLabel: string; // e.g. 'F1'
+  direction: 'up' | 'down';
+}
+
+/**
+ * Splits a (possibly multi-floor) path into the contiguous segment(s) that lie
+ * on the given floor, plus the transition points where the route changes floors.
+ *
+ * A waypoint belongs to `floor` if its id is present in `floor.waypoints`.
+ * Floor-connector waypoints (elevators/stairs) carry `connectedFloor`, which we
+ * use to label the transition and compute up/down direction.
+ */
+function splitPathByFloor(
+  path: Waypoint[],
+  floor: Floor,
+): { segments: Waypoint[][]; transitions: RouteTransition[] } {
+  const onFloor = new Set(floor.waypoints.map((w) => w.id));
+  const segments: Waypoint[][] = [];
+  const transitions: RouteTransition[] = [];
+
+  let current: Waypoint[] = [];
+  for (let i = 0; i < path.length; i++) {
+    const wp = path[i];
+    if (onFloor.has(wp.id)) {
+      current.push(wp);
+
+      // If the next waypoint leaves this floor and this is a connector, mark it.
+      const next = path[i + 1];
+      if (next && !onFloor.has(next.id) && wp.connectorType && wp.connectedFloor) {
+        transitions.push({
+          x: wp.x,
+          y: wp.y,
+          connectorType: wp.connectorType,
+          targetLabel: floorShortLabel(wp.connectedFloor),
+          direction: floorLevelOf(wp.connectedFloor) > floor.level ? 'up' : 'down',
+        });
+      }
+    } else if (current.length > 0) {
+      // Route left this floor — close the current on-floor segment.
+      segments.push(current);
+      current = [];
+    }
+  }
+  if (current.length > 0) segments.push(current);
+
+  return { segments, transitions };
+}
 
 // ── Props ───────────────────────────────────────────────────
 
@@ -396,9 +486,12 @@ const FloorPlanCanvas: React.FC<FloorPlanCanvasProps> = ({
     }
   }, [doorWaypoints, worldToCanvas]);
 
-  /** Draw animated dashed route path */
+  /** Draw animated dashed route path (current floor segment only) + cross-floor badges */
   const drawRoute = useCallback((ctx: CanvasRenderingContext2D, t: Transform, cw: number, ch: number, elapsed: number) => {
     if (!path || path.length < 2) return;
+
+    const { segments, transitions } = splitPathByFloor(path, floor);
+    if (segments.length === 0 && transitions.length === 0) return;
 
     const dashOffset = elapsed * MAP_CONFIG.routeAnimSpeed * (MAP_CONFIG.routeDashLength + MAP_CONFIG.routeGapLength) * 3;
 
@@ -417,18 +510,72 @@ const FloorPlanCanvas: React.FC<FloorPlanCanvasProps> = ({
     ctx.shadowColor = COLORS.pathGlow;
     ctx.shadowBlur = 8 * Math.min(t.zoom, 2);
 
-    ctx.beginPath();
-    const first = worldToCanvas(path[0].x, path[0].y, t, cw, ch);
-    ctx.moveTo(first.cx, first.cy);
-
-    for (let i = 1; i < path.length; i++) {
-      const p = worldToCanvas(path[i].x, path[i].y, t, cw, ch);
-      ctx.lineTo(p.cx, p.cy);
+    // Draw each on-floor segment independently so the line never "jumps"
+    // across floors via an elevator/stairwell.
+    for (const segment of segments) {
+      if (segment.length < 2) continue;
+      ctx.beginPath();
+      const first = worldToCanvas(segment[0].x, segment[0].y, t, cw, ch);
+      ctx.moveTo(first.cx, first.cy);
+      for (let i = 1; i < segment.length; i++) {
+        const p = worldToCanvas(segment[i].x, segment[i].y, t, cw, ch);
+        ctx.lineTo(p.cx, p.cy);
+      }
+      ctx.stroke();
     }
-    ctx.stroke();
-
     ctx.restore();
-  }, [path, worldToCanvas]);
+
+    // Draw cross-floor transition badges (elevator/stairs + target floor)
+    for (const tr of transitions) {
+      const p = worldToCanvas(tr.x, tr.y, t, cw, ch);
+      const r = 13 * Math.min(t.zoom, 2);
+      const icon = tr.connectorType === 'elevator' ? '🛗' : tr.connectorType === 'escalator' ? '🪜' : '🪜';
+      const arrow = tr.direction === 'up' ? '↑' : '↓';
+      const label = `${arrow} ${tr.targetLabel}`;
+
+      ctx.save();
+      // Pulsing ring to draw attention to the floor change
+      const pulse = 0.5 + 0.5 * Math.sin(elapsed * 0.005);
+      ctx.beginPath();
+      ctx.arc(p.cx, p.cy, r + 4 + pulse * 3, 0, Math.PI * 2);
+      ctx.fillStyle = COLORS.pathGlow;
+      ctx.globalAlpha = 0.25;
+      ctx.fill();
+      ctx.globalAlpha = 1;
+
+      // Badge disc
+      ctx.beginPath();
+      ctx.arc(p.cx, p.cy, r, 0, Math.PI * 2);
+      ctx.fillStyle = COLORS.mapRouteLine;
+      ctx.fill();
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = '#ffffff';
+      ctx.stroke();
+
+      // Connector icon
+      ctx.font = `${r * 1.1}px system-ui, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText(icon, p.cx, p.cy + 0.5);
+
+      // Floor pill ("↑ F1") below the disc
+      const pillText = label;
+      ctx.font = `600 ${Math.max(10, r * 0.85)}px system-ui, sans-serif`;
+      const tw = ctx.measureText(pillText).width;
+      const pillW = tw + 12;
+      const pillH = r * 1.25;
+      const pillX = p.cx - pillW / 2;
+      const pillY = p.cy + r + 4;
+      ctx.fillStyle = COLORS.mapRouteLine;
+      roundRect(ctx, pillX, pillY, pillW, pillH, pillH / 2);
+      ctx.fill();
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText(pillText, p.cx, pillY + pillH / 2 + 0.5);
+
+      ctx.restore();
+    }
+  }, [path, floor, worldToCanvas]);
 
   /** Draw POI icons and labels */
   const drawPOIs = useCallback((ctx: CanvasRenderingContext2D, t: Transform, cw: number, ch: number) => {

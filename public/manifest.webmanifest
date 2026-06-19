@@ -1,0 +1,19 @@
+{
+  "name": "Inmap — Indoor Navigation",
+  "short_name": "Inmap",
+  "description": "Indoor navigation with QR-code anchors, turn-by-turn routing and an optional 3D/AR mode.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0a0e1a",
+  "theme_color": "#0a0e1a",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

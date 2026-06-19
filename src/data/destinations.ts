@@ -355,12 +355,15 @@ export const DESTINATIONS: PointOfInterest[] = [
  * Multi-token fuzzy search across name, description, category, and tags.
  * Each search token must appear in at least one field.
  */
-export function searchDestinations(query: string): PointOfInterest[] {
-  if (!query || query.trim().length === 0) return [...DESTINATIONS];
+export function searchDestinations(
+  query: string,
+  dataset: PointOfInterest[] = DESTINATIONS,
+): PointOfInterest[] {
+  if (!query || query.trim().length === 0) return [...dataset];
 
   const tokens = query.toLowerCase().trim().split(/\s+/);
 
-  return DESTINATIONS.filter((poi) => {
+  return dataset.filter((poi) => {
     const searchable = [
       poi.name,
       poi.description ?? '',
