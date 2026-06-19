@@ -87,20 +87,43 @@ function computeFilteredDestinations(
   category: POICategory | null,
   floorLevel: number,
 ): PointOfInterest[] {
-  // Start with search-filtered list
-  let results = query.trim().length > 0
-    ? searchDestinations(query)
-    : [...DESTINATIONS];
+  const hasQuery = query.trim().length > 0;
 
-  // Filter by floor
-  const floor = getFloorByLevel(floorLevel);
-  if (floor) {
-    results = results.filter((d) => d.floorId === floor.id);
+  // Start with search-filtered list
+  let results = hasQuery ? searchDestinations(query) : [...DESTINATIONS];
+
+  // Floor scoping:
+  //  - When BROWSING (no query), scope the list to the active floor so the
+  //    list and the visible map stay in sync.
+  //  - When SEARCHING, return matches across ALL floors. Each result carries
+  //    a floor badge in the SearchBar, and selecting one switches floors.
+  if (!hasQuery) {
+    const floor = getFloorByLevel(floorLevel);
+    if (floor) {
+      results = results.filter((d) => d.floorId === floor.id);
+    }
   }
 
-  // Filter by category
+  // Filter by category (always applies)
   if (category) {
     results = results.filter((d) => d.category === category);
+  }
+
+  // When searching across floors, surface current-floor matches first, then
+  // order by floor level, then alphabetically — so nearby results lead.
+  if (hasQuery) {
+    const activeFloorId = getFloorByLevel(floorLevel)?.id;
+    results = [...results].sort((a, b) => {
+      const aCurrent = a.floorId === activeFloorId ? 0 : 1;
+      const bCurrent = b.floorId === activeFloorId ? 0 : 1;
+      if (aCurrent !== bCurrent) return aCurrent - bCurrent;
+
+      const aLevel = floorIdToLevel(a.floorId);
+      const bLevel = floorIdToLevel(b.floorId);
+      if (aLevel !== bLevel) return aLevel - bLevel;
+
+      return a.name.localeCompare(b.name);
+    });
   }
 
   return results;

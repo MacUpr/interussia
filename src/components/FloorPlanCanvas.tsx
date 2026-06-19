@@ -41,6 +41,12 @@ export interface FloorPlanCanvasProps {
   onPOITap: (poi: PointOfInterest) => void;
   /** Callback when empty area is tapped/clicked */
   onEmptyTap: () => void;
+  /**
+   * Monotonically increasing token. Changing it re-runs the auto-fit logic,
+   * recentering and fitting the current floor to the viewport. Used by the
+   * "reset view" / compass control in the parent.
+   */
+  resetViewToken?: number;
 }
 
 // ── Internal types ──────────────────────────────────────────
@@ -168,6 +174,7 @@ const FloorPlanCanvas: React.FC<FloorPlanCanvasProps> = ({
   categoryFilter,
   onPOITap,
   onEmptyTap,
+  resetViewToken,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -234,7 +241,8 @@ const FloorPlanCanvas: React.FC<FloorPlanCanvasProps> = ({
       offsetY: -centerY * fitZoom,
       zoom: fitZoom,
     });
-  }, [floor]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [floor, resetViewToken]);
 
   // ── Canvas sizing via ResizeObserver ───────────────────────
 
