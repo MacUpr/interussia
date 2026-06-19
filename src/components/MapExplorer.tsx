@@ -65,6 +65,13 @@ const MapExplorer: React.FC = () => {
   const selectDestination = useNavigationStore((s) => s.selectDestination);
   const cancelNavigation = useNavigationStore((s) => s.cancelNavigation);
   const startNavigation = useNavigationStore((s) => s.startNavigation);
+  const hydrateFromRemote = useNavigationStore((s) => s.hydrateFromRemote);
+
+  // Load POI data from the remote backend (Supabase) once on mount.
+  // No-op when Supabase is not configured — the app uses local data.
+  useEffect(() => {
+    void hydrateFromRemote();
+  }, [hydrateFromRemote]);
 
   // ── Local State ───────────────────────────────────────────
   const [activeFloorLevel, setActiveFloorLevel] = useState(0);
@@ -72,6 +79,8 @@ const MapExplorer: React.FC = () => {
   const [selectedPOI, setSelectedPOI] = useState<PointOfInterest | null>(null);
   const [bottomSheetState, setBottomSheetState] = useState<BottomSheetState>('hidden');
   const [mapViewState, setMapViewState] = useState<MapViewState>('browsing');
+  /** Bumped to ask the canvas to recenter & fit the current floor. */
+  const [resetViewToken, setResetViewToken] = useState(0);
 
   // ── Derived State ─────────────────────────────────────────
 
@@ -241,6 +250,7 @@ const MapExplorer: React.FC = () => {
           categoryFilter={categoryFilter}
           onPOITap={handlePOISelect}
           onEmptyTap={handleEmptyTap}
+          resetViewToken={resetViewToken}
         />
 
         {/* ── FloorSwitcher (right side) ─────────────────────── */}
@@ -291,9 +301,9 @@ const MapExplorer: React.FC = () => {
             📍
           </button>
 
-          {/* Compass button */}
+          {/* Compass button — recenters and fits the current floor to view */}
           <button
-            onClick={() => {/* Reset map rotation — placeholder */}}
+            onClick={() => setResetViewToken((t) => t + 1)}
             style={{
               width: 44,
               height: 44,

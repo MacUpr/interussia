@@ -28,6 +28,7 @@ import {
   getDestinationsByCategory,
   getDestinationsByFloor,
 } from '../data/destinations';
+import { getDestinations } from '../data/repository';
 
 // ── Store Interface ─────────────────────────────────────────
 
@@ -45,6 +46,8 @@ export interface NavigationStore {
   totalDistanceRemaining: number;
   searchQuery: string;
   filteredDestinations: PointOfInterest[];
+  /** Full dataset of POIs (local by default; replaced by hydrateFromRemote). */
+  destinations: PointOfInterest[];
 
   // ── Map state (v2 — 2GIS-style) ──
   selectedPOI: PointOfInterest | null;
@@ -62,6 +65,8 @@ export interface NavigationStore {
   cancelNavigation: () => void;
   setSearchQuery: (query: string) => void;
   reset: () => void;
+  /** Loads POI data from the remote backend (Supabase) when configured. */
+  hydrateFromRemote: () => Promise<void>;
 
   // ── Map actions (v2) ──
   selectPOI: (poi: PointOfInterest) => void;
@@ -86,21 +91,45 @@ function computeFilteredDestinations(
   query: string,
   category: POICategory | null,
   floorLevel: number,
+  dataset: PointOfInterest[] = DESTINATIONS,
 ): PointOfInterest[] {
-  // Start with search-filtered list
-  let results = query.trim().length > 0
-    ? searchDestinations(query)
-    : [...DESTINATIONS];
+  const hasQuery = query.trim().length > 0;
 
-  // Filter by floor
-  const floor = getFloorByLevel(floorLevel);
-  if (floor) {
-    results = results.filter((d) => d.floorId === floor.id);
+  // Start with search-filtered list
+  let results = hasQuery ? searchDestinations(query, dataset) : [...dataset];
+
+  // Floor scoping:
+  //  - When BROWSING (no query), scope the list to the active floor so the
+  //    list and the visible map stay in sync.
+  //  - When SEARCHING, return matches across ALL floors. Each result carries
+  //    a floor badge in the SearchBar, and selecting one switches floors.
+  if (!hasQuery) {
+    const floor = getFloorByLevel(floorLevel);
+    if (floor) {
+      results = results.filter((d) => d.floorId === floor.id);
+    }
   }
 
-  // Filter by category
+  // Filter by category (always applies)
   if (category) {
     results = results.filter((d) => d.category === category);
+  }
+
+  // When searching across floors, surface current-floor matches first, then
+  // order by floor level, then alphabetically — so nearby results lead.
+  if (hasQuery) {
+    const activeFloorId = getFloorByLevel(floorLevel)?.id;
+    results = [...results].sort((a, b) => {
+      const aCurrent = a.floorId === activeFloorId ? 0 : 1;
+      const bCurrent = b.floorId === activeFloorId ? 0 : 1;
+      if (aCurrent !== bCurrent) return aCurrent - bCurrent;
+
+      const aLevel = floorIdToLevel(a.floorId);
+      const bLevel = floorIdToLevel(b.floorId);
+      if (aLevel !== bLevel) return aLevel - bLevel;
+
+      return a.name.localeCompare(b.name);
+    });
   }
 
   return results;
@@ -130,6 +159,7 @@ export const useNavigationStore = create<NavigationStore>((set, get) => ({
   totalDistanceRemaining: 0,
   searchQuery: '',
   filteredDestinations: getDestinationsByFloor('FLOOR_GROUND'),
+  destinations: DESTINATIONS,
 
   // v2 map state
   selectedPOI: null,
@@ -163,7 +193,7 @@ export const useNavigationStore = create<NavigationStore>((set, get) => ({
       distanceToNext: 0,
       totalDistanceRemaining: 0,
       searchQuery: '',
-      filteredDestinations: computeFilteredDestinations('', null, floorLevel),
+      filteredDestinations: computeFilteredDestinations('', null, floorLevel, get().destinations),
       // Keep map in browsing mode
       mapViewState: 'browsing',
       bottomSheetState: 'hidden',
@@ -245,7 +275,7 @@ export const useNavigationStore = create<NavigationStore>((set, get) => ({
         mapViewState: 'browsing',
         bottomSheetState: 'hidden',
         selectedPOI: null,
-        filteredDestinations: computeFilteredDestinations(searchQuery, categoryFilter, currentFloorIndex),
+        filteredDestinations: computeFilteredDestinations(searchQuery, categoryFilter, currentFloorIndex, get().destinations),
       });
     } else {
       get().reset();
@@ -256,7 +286,7 @@ export const useNavigationStore = create<NavigationStore>((set, get) => ({
     const { categoryFilter, currentFloorIndex } = get();
     set({
       searchQuery: query,
-      filteredDestinations: computeFilteredDestinations(query, categoryFilter, currentFloorIndex),
+      filteredDestinations: computeFilteredDestinations(query, categoryFilter, currentFloorIndex, get().destinations),
     });
   },
 
@@ -277,6 +307,7 @@ export const useNavigationStore = create<NavigationStore>((set, get) => ({
       totalDistanceRemaining: 0,
       searchQuery: '',
       filteredDestinations: getDestinationsByFloor('FLOOR_GROUND'),
+      destinations: get().destinations,
       // v2 state
       selectedPOI: null,
       currentFloorIndex: 0,
@@ -285,6 +316,26 @@ export const useNavigationStore = create<NavigationStore>((set, get) => ({
       categoryFilter: null,
       viewMode: 'map',
     });
+  },
+
+  hydrateFromRemote: async (): Promise<void> => {
+    try {
+      const remote = await getDestinations();
+      if (!remote || remote.length === 0) return;
+      const { searchQuery, categoryFilter, currentFloorIndex } = get();
+      set({
+        destinations: remote,
+        filteredDestinations: computeFilteredDestinations(
+          searchQuery,
+          categoryFilter,
+          currentFloorIndex,
+          remote,
+        ),
+      });
+    } catch (err) {
+      // Repository already falls back to local data; this is a safety net.
+      console.warn('[store] hydrateFromRemote failed:', err);
+    }
   },
 
   // ── Map Actions (v2) ──────────────────────────────────────
@@ -309,7 +360,7 @@ export const useNavigationStore = create<NavigationStore>((set, get) => ({
     const { searchQuery, categoryFilter } = get();
     set({
       currentFloorIndex: level,
-      filteredDestinations: computeFilteredDestinations(searchQuery, categoryFilter, level),
+      filteredDestinations: computeFilteredDestinations(searchQuery, categoryFilter, level, get().destinations),
       // Clear POI selection when changing floors
       selectedPOI: null,
       bottomSheetState: 'hidden',
@@ -328,7 +379,7 @@ export const useNavigationStore = create<NavigationStore>((set, get) => ({
     const { searchQuery, currentFloorIndex } = get();
     set({
       categoryFilter: cat,
-      filteredDestinations: computeFilteredDestinations(searchQuery, cat, currentFloorIndex),
+      filteredDestinations: computeFilteredDestinations(searchQuery, cat, currentFloorIndex, get().destinations),
     });
   },
 

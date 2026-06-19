@@ -31,6 +31,8 @@ interface BuildingSceneProps {
   onPlayerMove?: (x: number, z: number) => void;
   playerStart?: { x: number; z: number };
   navigationActive: boolean;
+  /** Pass-through: drive AR heading from the device compass. */
+  deviceHeading?: boolean;
 }
 
 // ── Constants ───────────────────────────────────────────────
@@ -66,6 +68,7 @@ export default function BuildingScene({
   onPlayerMove,
   playerStart,
   navigationActive,
+  deviceHeading,
 }: BuildingSceneProps) {
   // Stable empty array for when no path is supplied
   const stablePathPoints = useMemo(
@@ -145,6 +148,7 @@ export default function BuildingScene({
         onPositionChange={onPlayerMove}
         startPosition={playerStart}
         enabled
+        deviceHeading={deviceHeading}
       />
     </>
   );
