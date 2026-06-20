@@ -1,10 +1,14 @@
 // ============================================================
-// Inmap v2 — SearchBar Component
+// Inmap v2 — SearchBar Component (with 2GIS Integration)
 // ============================================================
 //
 // Persistent search bar with autocomplete dropdown, category
 // filter chips, QR scan button, and floor indicator badge.
 // Positioned at the top of the map view.
+//
+// Now supports merged results from:
+//   1. Local indoor destinations (instant)
+//   2. 2GIS Catalog API (debounced, async)
 // ============================================================
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
@@ -18,8 +22,12 @@ interface SearchBarProps {
   value: string;
   /** Called when the user types in the search field. */
   onChange: (query: string) => void;
-  /** Filtered POI results matching the query. */
+  /** Filtered POI results matching the query (indoor). */
   results: PointOfInterest[];
+  /** 2GIS API search results (outdoor/catalog). */
+  twogisResults?: PointOfInterest[];
+  /** Whether a 2GIS search is in progress. */
+  isSearching2GIS?: boolean;
   /** Called when the user selects a result from the dropdown. */
   onResultSelect: (poi: PointOfInterest) => void;
   /** Called when the user taps the QR scan button. */
@@ -46,19 +54,16 @@ interface CategoryChipDef {
 }
 
 /**
- * Merged category chips as per spec:
- * - 'All' resets to null
- * - 'Food & Dining' merges cafeteria + food
- * - 'Facilities' merges restroom + elevator + stairs
+ * Merged category chips — relabeled for NSU indoor context.
  */
 const CATEGORY_CHIPS: CategoryChipDef[] = [
-  { key: 'all', label: 'All', icon: '🔍', categories: [] },
-  { key: 'food', label: 'Food & Dining', icon: '☕', categories: ['cafeteria', 'food'] },
-  { key: 'meeting_room', label: 'Meeting Rooms', icon: CATEGORY_ICONS.meeting_room, categories: ['meeting_room'] },
-  { key: 'office', label: 'Offices', icon: CATEGORY_ICONS.office, categories: ['office'] },
-  { key: 'facilities', label: 'Facilities', icon: '🚻', categories: ['restroom', 'elevator', 'stairs'] },
-  { key: 'services', label: 'Services', icon: CATEGORY_ICONS.services, categories: ['services', 'info_desk', 'reception'] },
-  { key: 'other', label: 'Other', icon: '📍', categories: ['entrance', 'exit', 'emergency_exit', 'server_room', 'custom', 'shopping', 'health', 'entertainment', 'parking', 'atm'] },
+  { key: 'all', label: 'Все', icon: '🔍', categories: [] },
+  { key: 'food', label: 'Еда', icon: '☕', categories: ['cafeteria', 'food'] },
+  { key: 'meeting_room', label: 'Аудитории', icon: CATEGORY_ICONS.meeting_room, categories: ['meeting_room'] },
+  { key: 'office', label: 'Кабинеты', icon: CATEGORY_ICONS.office, categories: ['office'] },
+  { key: 'facilities', label: 'Удобства', icon: '🚻', categories: ['restroom', 'elevator', 'stairs'] },
+  { key: 'services', label: 'Сервисы', icon: CATEGORY_ICONS.services, categories: ['services', 'info_desk', 'reception'] },
+  { key: 'other', label: 'Другое', icon: '📍', categories: ['entrance', 'exit', 'emergency_exit', 'server_room', 'custom', 'shopping', 'health', 'entertainment', 'parking', 'atm'] },
 ];
 
 // ── Constants ───────────────────────────────────────────────
@@ -69,19 +74,23 @@ const RESULT_ITEM_HEIGHT = 56;
 // ── Component ───────────────────────────────────────────────
 
 /**
- * SearchBar — persistent search with autocomplete and category chips.
+ * SearchBar — persistent search with autocomplete, 2GIS integration,
+ * and category chips.
  *
  * Features:
  * - Glassmorphism search input with magnifying glass icon + clear button
  * - QR scan button on the far right
- * - Autocomplete dropdown (max 6 visible, then scroll)
+ * - Autocomplete dropdown with dual sources (indoor + 2GIS)
  * - Horizontal scrollable category chip row
  * - Floor indicator badge
+ * - Loading spinner during 2GIS API search
  */
 const SearchBar: React.FC<SearchBarProps> = ({
   value,
   onChange,
   results,
+  twogisResults = [],
+  isSearching2GIS = false,
   onResultSelect,
   onQRScan,
   categoryFilter,
@@ -92,8 +101,12 @@ const SearchBar: React.FC<SearchBarProps> = ({
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
+  const hasIndoorResults = results.length > 0;
+  const hasTwoGISResults = twogisResults.length > 0;
+  const hasAnyResults = hasIndoorResults || hasTwoGISResults;
+
   /** Whether the autocomplete dropdown should be visible. */
-  const showDropdown = isFocused && value.length >= 1 && results.length > 0;
+  const showDropdown = isFocused && value.length >= 1 && (hasAnyResults || isSearching2GIS);
 
   /** Close dropdown on outside click. */
   useEffect(() => {
@@ -158,6 +171,11 @@ const SearchBar: React.FC<SearchBarProps> = ({
     return match ? `F${match[1]}` : 'G';
   };
 
+  /** Total count of all results for max height calculation. */
+  const totalResultCount = results.length + twogisResults.length
+    + (hasIndoorResults ? 1 : 0) // section header
+    + (hasTwoGISResults || isSearching2GIS ? 1 : 0); // section header
+
   return (
     <div
       ref={containerRef}
@@ -209,7 +227,7 @@ const SearchBar: React.FC<SearchBarProps> = ({
           value={value}
           onChange={(e) => onChange(e.target.value)}
           onFocus={() => setIsFocused(true)}
-          placeholder="Search places..."
+          placeholder="Поиск аудитории, кабинета..."
           style={{
             flex: 1,
             height: '100%',
@@ -221,7 +239,7 @@ const SearchBar: React.FC<SearchBarProps> = ({
             fontFamily: 'var(--font-sans)',
             minWidth: 0,
           }}
-          aria-label="Search places"
+          aria-label="Поиск по зданию"
           autoComplete="off"
         />
 
@@ -244,7 +262,7 @@ const SearchBar: React.FC<SearchBarProps> = ({
               transition: 'all 150ms ease',
               flexShrink: 0,
             }}
-            aria-label="Clear search"
+            aria-label="Очистить"
           >
             ✕
           </button>
@@ -285,8 +303,8 @@ const SearchBar: React.FC<SearchBarProps> = ({
             transition: 'all 200ms ease',
             flexShrink: 0,
           }}
-          aria-label="Scan QR code"
-          title="Scan QR code"
+          aria-label="Сканировать QR-код"
+          title="Сканировать QR-код"
         >
           📷
         </button>
@@ -303,21 +321,85 @@ const SearchBar: React.FC<SearchBarProps> = ({
             border: `1px solid ${COLORS.borderGlass}`,
             borderRadius: 12,
             overflow: 'hidden',
-            maxHeight: MAX_VISIBLE_RESULTS * RESULT_ITEM_HEIGHT + 8,
-            overflowY: results.length > MAX_VISIBLE_RESULTS ? 'auto' : 'hidden',
+            maxHeight: Math.min(totalResultCount, MAX_VISIBLE_RESULTS) * RESULT_ITEM_HEIGHT + 8,
+            overflowY: totalResultCount > MAX_VISIBLE_RESULTS ? 'auto' : 'hidden',
             boxShadow: '0 8px 30px rgba(0, 0, 0, 0.5)',
             animation: 'slide-up 0.2s ease-out',
           }}
         >
-          {results.slice(0, 20).map((poi, index) => (
-            <SearchResultItem
-              key={poi.id}
-              poi={poi}
-              floorBadge={getFloorBadge(poi)}
-              onClick={() => handleResultClick(poi)}
-              isLast={index === Math.min(results.length, 20) - 1}
-            />
-          ))}
+          {/* ── Indoor Results Section ──────────────────────────── */}
+          {hasIndoorResults && (
+            <>
+              <SectionHeader label="🏢 Внутри здания" />
+              {results.slice(0, 10).map((poi, index) => (
+                <SearchResultItem
+                  key={poi.id}
+                  poi={poi}
+                  floorBadge={getFloorBadge(poi)}
+                  onClick={() => handleResultClick(poi)}
+                  isLast={index === Math.min(results.length, 10) - 1 && !hasTwoGISResults && !isSearching2GIS}
+                />
+              ))}
+            </>
+          )}
+
+          {/* ── 2GIS Results Section ────────────────────────────── */}
+          {(hasTwoGISResults || isSearching2GIS) && (
+            <>
+              <SectionHeader label="🗺️ 2ГИС — НГУ" />
+              {isSearching2GIS && !hasTwoGISResults && (
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 10,
+                    padding: '12px 14px',
+                    color: COLORS.textMuted,
+                    fontSize: '0.82rem',
+                    fontFamily: 'var(--font-sans)',
+                  }}
+                >
+                  <span
+                    style={{
+                      display: 'inline-block',
+                      width: 16,
+                      height: 16,
+                      border: `2px solid ${COLORS.borderGlass}`,
+                      borderTopColor: COLORS.accentPrimary,
+                      borderRadius: '50%',
+                      animation: 'twogis-spin 0.8s linear infinite',
+                    }}
+                  />
+                  Поиск в 2ГИС...
+                </div>
+              )}
+              {twogisResults.slice(0, 10).map((poi, index) => (
+                <SearchResultItem
+                  key={poi.id}
+                  poi={poi}
+                  floorBadge="2ГИС"
+                  sourceBadge="2ГИС"
+                  onClick={() => handleResultClick(poi)}
+                  isLast={index === Math.min(twogisResults.length, 10) - 1}
+                />
+              ))}
+            </>
+          )}
+
+          {/* No results state */}
+          {!hasAnyResults && !isSearching2GIS && value.length >= 2 && (
+            <div
+              style={{
+                padding: '16px 14px',
+                color: COLORS.textMuted,
+                fontSize: '0.85rem',
+                fontFamily: 'var(--font-sans)',
+                textAlign: 'center',
+              }}
+            >
+              Ничего не найдено
+            </div>
+          )}
         </div>
       )}
 
@@ -360,7 +442,7 @@ const SearchBar: React.FC<SearchBarProps> = ({
                 flexShrink: 0,
               }}
               aria-pressed={isActive}
-              aria-label={`Filter by ${chip.label}`}
+              aria-label={`Фильтр: ${chip.label}`}
             >
               <span style={{ fontSize: '0.85rem' }}>{chip.icon}</span>
               {chip.label}
@@ -372,11 +454,41 @@ const SearchBar: React.FC<SearchBarProps> = ({
   );
 };
 
+// ── SectionHeader (internal sub-component) ──────────────────
+
+interface SectionHeaderProps {
+  label: string;
+}
+
+/**
+ * A thin section header within the dropdown to separate
+ * indoor and 2GIS result groups.
+ */
+const SectionHeader: React.FC<SectionHeaderProps> = ({ label }) => (
+  <div
+    style={{
+      padding: '6px 14px 4px',
+      fontSize: '0.68rem',
+      fontWeight: 700,
+      fontFamily: 'var(--font-sans)',
+      color: COLORS.textMuted,
+      textTransform: 'uppercase',
+      letterSpacing: '0.06em',
+      borderBottom: `1px solid ${COLORS.borderGlass}`,
+      background: 'rgba(255, 255, 255, 0.02)',
+    }}
+  >
+    {label}
+  </div>
+);
+
 // ── SearchResultItem (internal sub-component) ───────────────
 
 interface SearchResultItemProps {
   poi: PointOfInterest;
   floorBadge: string;
+  /** Optional source badge (e.g. '2ГИС'). */
+  sourceBadge?: string;
   onClick: () => void;
   isLast: boolean;
 }
@@ -387,6 +499,7 @@ interface SearchResultItemProps {
 const SearchResultItem: React.FC<SearchResultItemProps> = ({
   poi,
   floorBadge,
+  sourceBadge,
   onClick,
   isLast,
 }) => {
@@ -412,7 +525,7 @@ const SearchResultItem: React.FC<SearchResultItemProps> = ({
         fontFamily: 'var(--font-sans)',
         minHeight: 52,
       }}
-      aria-label={`Navigate to ${poi.name}`}
+      aria-label={`Перейти к ${poi.name}`}
     >
       {/* Icon */}
       <span
@@ -431,7 +544,7 @@ const SearchResultItem: React.FC<SearchResultItemProps> = ({
         {poi.icon}
       </span>
 
-      {/* Name + category */}
+      {/* Name + category/description */}
       <div style={{ flex: 1, minWidth: 0 }}>
         <div
           style={{
@@ -455,19 +568,38 @@ const SearchResultItem: React.FC<SearchResultItemProps> = ({
             whiteSpace: 'nowrap',
           }}
         >
-          {poi.category.replace(/_/g, ' ')}
+          {poi.description || poi.category.replace(/_/g, ' ')}
         </div>
       </div>
+
+      {/* Source badge (2ГИС) */}
+      {sourceBadge && (
+        <span
+          style={{
+            padding: '2px 6px',
+            background: 'rgba(0, 198, 255, 0.12)',
+            borderRadius: 10,
+            fontSize: '0.6rem',
+            fontWeight: 700,
+            color: '#00c6ff',
+            flexShrink: 0,
+          }}
+        >
+          {sourceBadge}
+        </span>
+      )}
 
       {/* Floor badge */}
       <span
         style={{
           padding: '2px 7px',
-          background: 'rgba(99, 102, 241, 0.12)',
+          background: sourceBadge
+            ? 'rgba(0, 198, 255, 0.08)'
+            : 'rgba(99, 102, 241, 0.12)',
           borderRadius: 12,
           fontSize: '0.65rem',
           fontWeight: 700,
-          color: COLORS.accentSecondary,
+          color: sourceBadge ? '#00c6ff' : COLORS.accentSecondary,
           flexShrink: 0,
         }}
       >

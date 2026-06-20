@@ -1,11 +1,18 @@
 // ============================================================
-// Inmap v2 — MapExplorer Component
+// Inmap v2 — MapExplorer Component (with 2GIS Integration)
 // ============================================================
 //
-// Main home screen that composes all 2GIS-style map components.
+// Main home screen that composes all map components for
+// indoor navigation at NSU.
+//
 // Orchestrates FloorPlanCanvas, SearchBar, FloorSwitcher,
 // BottomSheet, POIDetailCard, and RouteInfoPanel into a
 // cohesive map browsing and navigation experience.
+//
+// 2GIS Integration:
+//   - Merges local indoor search with 2GIS catalog search
+//   - Debounced 2GIS API calls via useTwoGISSearch hook
+//   - 2GIS results shown with distinct badges in dropdown
 // ============================================================
 
 import React, { useCallback, useMemo, useState, useEffect } from 'react';
@@ -22,20 +29,21 @@ import { COLORS } from '../utils/constants';
 import { ALL_FLOORS, GROUND_FLOOR, getFloorByLevel } from '../data/building';
 import { searchDestinations, getDestinationsByFloor } from '../data/destinations';
 import { calculateDirections } from '../engine/directionCalculator';
+import { useTwoGISSearch } from '../hooks/useTwoGISSearch';
 
 // ── Component Imports ───────────────────────────────────────
 
 import FloorSwitcher from './FloorSwitcher';
 import SearchBar from './SearchBar';
 import RouteInfoPanel from './RouteInfoPanel';
-import FloorPlanCanvas from './FloorPlanCanvas';
+import Building3DView from './Building3DView';
 import BottomSheet from './BottomSheet';
 import POIDetailCard from './POIDetailCard';
 
 // ── Component ───────────────────────────────────────────────
 
 /**
- * MapExplorer — the main map exploration screen (2GIS-style).
+ * MapExplorer — the main indoor map exploration screen.
  *
  * Layout:
  * - SearchBar at top (z-index: 100) with category chips
@@ -73,6 +81,12 @@ const MapExplorer: React.FC = () => {
     void hydrateFromRemote();
   }, [hydrateFromRemote]);
 
+  // ── 2GIS Search Integration ───────────────────────────────
+  const {
+    twogisResults,
+    isSearching: isSearching2GIS,
+  } = useTwoGISSearch(searchQuery);
+
   // ── Local State ───────────────────────────────────────────
   const [activeFloorLevel, setActiveFloorLevel] = useState(0);
   const [categoryFilter, setCategoryFilter] = useState<POICategory | null>(null);
@@ -99,7 +113,7 @@ const MapExplorer: React.FC = () => {
     return pois;
   }, [activeFloor.id, categoryFilter]);
 
-  /** Search results — filtered by both query and category. */
+  /** Search results — filtered by both query and category (indoor). */
   const searchResults = useMemo(() => {
     let results = searchQuery.length > 0
       ? searchDestinations(searchQuery)
@@ -152,7 +166,7 @@ const MapExplorer: React.FC = () => {
     }
   }, [mapViewState]);
 
-  /** Handle search result selection. */
+  /** Handle search result selection (indoor or 2GIS). */
   const handleResultSelect = useCallback((poi: PointOfInterest) => {
     // Switch to the POI's floor
     const floor = ALL_FLOORS.find((f) => f.id === poi.floorId);
@@ -225,6 +239,8 @@ const MapExplorer: React.FC = () => {
         value={searchQuery}
         onChange={setSearchQuery}
         results={searchResults}
+        twogisResults={twogisResults}
+        isSearching2GIS={isSearching2GIS}
         onResultSelect={handleResultSelect}
         onQRScan={handleQRScan}
         categoryFilter={categoryFilter}
@@ -232,25 +248,18 @@ const MapExplorer: React.FC = () => {
         currentFloorName={activeFloor.name}
       />
 
-      {/* ── FloorPlanCanvas (fills remaining space) ──────────── */}
+      {/* ── 3D Building View (fills remaining space) ──────────── */}
       <div style={{ flex: 1, position: 'relative', marginTop: 0 }}>
-        <FloorPlanCanvas
-          floor={activeFloor}
+        <Building3DView
+          floors={ALL_FLOORS}
+          activeFloorLevel={activeFloorLevel}
           path={calculatedPath}
           userPosition={currentPosition}
-          destination={
-            selectedDestination
-              ? selectedDestination.position
-              : selectedPOI
-                ? selectedPOI.position
-                : null
-          }
+          userFloorId={currentFloor}
           pois={visiblePOIs}
           selectedPOI={selectedPOI}
-          categoryFilter={categoryFilter}
           onPOITap={handlePOISelect}
           onEmptyTap={handleEmptyTap}
-          resetViewToken={resetViewToken}
         />
 
         {/* ── FloorSwitcher (right side) ─────────────────────── */}
@@ -295,8 +304,8 @@ const MapExplorer: React.FC = () => {
               transition: 'all 200ms ease',
               color: currentPosition ? COLORS.accentPrimary : COLORS.textMuted,
             }}
-            title="Locate me"
-            aria-label="Center on current position"
+            title="Моё местоположение"
+            aria-label="Центрировать на текущей позиции"
           >
             📍
           </button>
@@ -321,8 +330,8 @@ const MapExplorer: React.FC = () => {
               transition: 'all 200ms ease',
               color: COLORS.textSecondary,
             }}
-            title="Reset compass"
-            aria-label="Reset map orientation"
+            title="Сбросить вид"
+            aria-label="Сбросить ориентацию карты"
           >
             🧭
           </button>

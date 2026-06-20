@@ -44,16 +44,16 @@ function doorConn(waypoints: Waypoint[], fromId: string, toId: string): Waypoint
 // ════════════════════════════════════════════════════════════
 
 const G_REGIONS: Region[] = [
-  { id: 'G_LOBBY',     type: 'lobby',         name: 'Main Lobby',      polygon: [[0,0],[20,0],[20,15],[0,15]],     properties: { accessible: true, capacity: 50 } },
-  { id: 'G_RECEPTION', type: 'room',          name: 'Reception',       polygon: [[0,15],[10,15],[10,25],[0,25]],   properties: { accessible: true, department: 'Front Desk' } },
-  { id: 'G_CORRIDOR',  type: 'corridor',      name: 'Main Corridor',   polygon: [[20,3],[50,3],[50,10],[20,10]],   properties: { accessible: true } },
-  { id: 'G_MEETING_A', type: 'room',          name: 'Meeting Room A',  polygon: [[20,0],[30,0],[30,3],[20,3]],     properties: { accessible: true, capacity: 8, category: 'meeting' } },
-  { id: 'G_MEETING_B', type: 'room',          name: 'Meeting Room B',  polygon: [[30,0],[42,0],[42,3],[30,3]],     properties: { accessible: true, capacity: 12, category: 'meeting' } },
-  { id: 'G_CAFETERIA', type: 'room',          name: 'Cafeteria',       polygon: [[42,0],[58,0],[58,12],[42,12]],   properties: { accessible: true, capacity: 60 } },
-  { id: 'G_RESTROOMS', type: 'restroom',      name: 'Restrooms',       polygon: [[20,10],[30,10],[30,17],[20,17]], properties: { accessible: true } },
-  { id: 'G_OFFICE',    type: 'room',          name: 'Open Office',     polygon: [[30,10],[50,10],[50,25],[30,25]], properties: { accessible: true, capacity: 40, department: 'Engineering' } },
-  { id: 'G_SERVER',    type: 'room',          name: 'Server Room',     polygon: [[50,10],[58,10],[58,20],[50,20]], properties: { accessible: false, category: 'infrastructure' } },
-  { id: 'G_ELEVATOR',  type: 'elevator_shaft', name: 'Elevator Lobby', polygon: [[20,17],[30,17],[30,25],[20,25]], properties: { accessible: true } },
+  { id: 'G_LOBBY',     type: 'lobby',         name: 'Главный вестибюль / Main Lobby',      polygon: [[0,0],[20,0],[20,15],[0,15]],     properties: { accessible: true, capacity: 50 } },
+  { id: 'G_RECEPTION', type: 'room',          name: 'Бюро пропусков / Security Desk',       polygon: [[0,15],[10,15],[10,25],[0,25]],   properties: { accessible: true, department: 'Front Desk' } },
+  { id: 'G_CORRIDOR',  type: 'corridor',      name: 'Главный коридор / Main Corridor',   polygon: [[20,3],[50,3],[50,10],[20,10]],   properties: { accessible: true } },
+  { id: 'G_MEETING_A', type: 'room',          name: 'Аудитория 101 / Lecture Hall 101',  polygon: [[20,0],[30,0],[30,3],[20,3]],     properties: { accessible: true, capacity: 8, category: 'meeting' } },
+  { id: 'G_MEETING_B', type: 'room',          name: 'Аудитория 102 / Lecture Hall 102',  polygon: [[30,0],[42,0],[42,3],[30,3]],     properties: { accessible: true, capacity: 12, category: 'meeting' } },
+  { id: 'G_CAFETERIA', type: 'room',          name: 'Столовая / Cafeteria',       polygon: [[42,0],[58,0],[58,12],[42,12]],   properties: { accessible: true, capacity: 60 } },
+  { id: 'G_RESTROOMS', type: 'restroom',      name: 'Туалет / Restroom',       polygon: [[20,10],[30,10],[30,17],[20,17]], properties: { accessible: true } },
+  { id: 'G_OFFICE',    type: 'room',          name: 'Приёмная комиссия / Admissions Office',     polygon: [[30,10],[50,10],[50,25],[30,25]], properties: { accessible: true, capacity: 40, department: 'Engineering' } },
+  { id: 'G_SERVER',    type: 'room',          name: 'Серверная / Server Room',     polygon: [[50,10],[58,10],[58,20],[50,20]], properties: { accessible: false, category: 'infrastructure' } },
+  { id: 'G_ELEVATOR',  type: 'elevator_shaft', name: 'Лифтовой холл / Elevator Lobby', polygon: [[20,17],[30,17],[30,25],[20,25]], properties: { accessible: true } },
 ];
 
 const G_WAYPOINTS: Waypoint[] = [
@@ -141,7 +141,7 @@ const G_CONNECTIONS: WaypointConnection[] = [
 
 export const GROUND_FLOOR: Floor = {
   id: 'FLOOR_GROUND',
-  name: 'Ground Floor',
+  name: 'Этаж 1 / Ground Floor',
   level: 0,
   heightMeters: 3.5,
   bounds: { minX: 0, minY: 0, maxX: 60, maxY: 25 },
@@ -157,14 +157,14 @@ export const GROUND_FLOOR: Floor = {
 // ════════════════════════════════════════════════════════════
 
 const F1_REGIONS: Region[] = [
-  { id: 'F1_LANDING',    type: 'lobby',          name: 'Upper Landing',       polygon: [[0,0],[20,0],[20,10],[0,10]],     properties: { accessible: true } },
-  { id: 'F1_CONFERENCE', type: 'room',           name: 'Conference Center',   polygon: [[0,10],[20,10],[20,25],[0,25]],   properties: { accessible: true, capacity: 100, category: 'meeting' } },
-  { id: 'F1_CORRIDOR',   type: 'corridor',       name: 'North Corridor',      polygon: [[20,3],[50,3],[50,10],[20,10]],   properties: { accessible: true } },
-  { id: 'F1_TRAINING',   type: 'room',           name: 'Training Room',       polygon: [[20,0],[35,0],[35,3],[20,3]],     properties: { accessible: true, capacity: 30 } },
-  { id: 'F1_WELLNESS',   type: 'room',           name: 'Wellness Room',       polygon: [[35,0],[50,0],[50,3],[35,3]],     properties: { accessible: true, capacity: 15 } },
-  { id: 'F1_LAB',        type: 'room',           name: 'Innovation Lab',      polygon: [[30,10],[50,10],[50,25],[30,25]], properties: { accessible: true, capacity: 25, department: 'R&D' } },
-  { id: 'F1_RESTROOMS',  type: 'restroom',       name: 'Restrooms F1',        polygon: [[20,10],[30,10],[30,17],[20,17]], properties: { accessible: true } },
-  { id: 'F1_ELEVATOR',   type: 'elevator_shaft', name: 'Elevator Lobby F1',   polygon: [[20,17],[30,17],[30,25],[20,25]], properties: { accessible: true } },
+  { id: 'F1_LANDING',    type: 'lobby',          name: 'Холл 2 этажа / 2nd Floor Hall',       polygon: [[0,0],[20,0],[20,10],[0,10]],     properties: { accessible: true } },
+  { id: 'F1_CONFERENCE', type: 'room',           name: 'Актовый зал / Assembly Hall',   polygon: [[0,10],[20,10],[20,25],[0,25]],   properties: { accessible: true, capacity: 100, category: 'meeting' } },
+  { id: 'F1_CORRIDOR',   type: 'corridor',       name: 'Коридор 2 этажа / 2nd Floor Corridor',      polygon: [[20,3],[50,3],[50,10],[20,10]],   properties: { accessible: true } },
+  { id: 'F1_TRAINING',   type: 'room',           name: 'Аудитория 201 / Lecture Hall 201',       polygon: [[20,0],[35,0],[35,3],[20,3]],     properties: { accessible: true, capacity: 30 } },
+  { id: 'F1_WELLNESS',   type: 'room',           name: 'Аудитория 202 / Lecture Hall 202',       polygon: [[35,0],[50,0],[50,3],[35,3]],     properties: { accessible: true, capacity: 15 } },
+  { id: 'F1_LAB',        type: 'room',           name: 'Компьютерный класс / Computer Lab',      polygon: [[30,10],[50,10],[50,25],[30,25]], properties: { accessible: true, capacity: 25, department: 'R&D' } },
+  { id: 'F1_RESTROOMS',  type: 'restroom',       name: 'Туалет 2 эт. / Restroom F2',        polygon: [[20,10],[30,10],[30,17],[20,17]], properties: { accessible: true } },
+  { id: 'F1_ELEVATOR',   type: 'elevator_shaft', name: 'Лифтовой холл 2 эт. / Elevator Lobby F2',   polygon: [[20,17],[30,17],[30,25],[20,25]], properties: { accessible: true } },
 ];
 
 const F1_WAYPOINTS: Waypoint[] = [
@@ -233,7 +233,7 @@ const F1_CONNECTIONS: WaypointConnection[] = [
 
 export const FIRST_FLOOR: Floor = {
   id: 'FLOOR_1',
-  name: 'First Floor',
+  name: 'Этаж 2 / First Floor',
   level: 1,
   heightMeters: 3.5,
   bounds: { minX: 0, minY: 0, maxX: 60, maxY: 25 },
@@ -249,13 +249,13 @@ export const FIRST_FLOOR: Floor = {
 // ════════════════════════════════════════════════════════════
 
 const F2_REGIONS: Region[] = [
-  { id: 'F2_EXEC_LOBBY', type: 'lobby',          name: 'Executive Lobby',     polygon: [[0,0],[20,0],[20,10],[0,10]],     properties: { accessible: true } },
-  { id: 'F2_BOARDROOM',  type: 'room',           name: 'Boardroom',           polygon: [[0,10],[20,10],[20,25],[0,25]],   properties: { accessible: true, capacity: 24, category: 'meeting' } },
-  { id: 'F2_CORRIDOR',   type: 'corridor',       name: 'Executive Corridor',  polygon: [[20,3],[50,3],[50,10],[20,10]],   properties: { accessible: true } },
-  { id: 'F2_CEO',        type: 'room',           name: 'CEO Office',          polygon: [[20,0],[35,0],[35,3],[20,3]],     properties: { accessible: true, category: 'executive' } },
-  { id: 'F2_CTO',        type: 'room',           name: 'CTO Office',          polygon: [[35,0],[50,0],[50,3],[35,3]],     properties: { accessible: true, category: 'executive' } },
-  { id: 'F2_LOUNGE',     type: 'room',           name: 'Rooftop Lounge',      polygon: [[30,10],[58,10],[58,25],[30,25]], properties: { accessible: true, capacity: 40 } },
-  { id: 'F2_ELEVATOR',   type: 'elevator_shaft', name: 'Elevator Lobby F2',   polygon: [[20,17],[30,17],[30,25],[20,25]], properties: { accessible: true } },
+  { id: 'F2_EXEC_LOBBY', type: 'lobby',          name: 'Библиотека / Library',     polygon: [[0,0],[20,0],[20,10],[0,10]],     properties: { accessible: true } },
+  { id: 'F2_BOARDROOM',  type: 'room',           name: 'Деканат / Dean\'s Office',           polygon: [[0,10],[20,10],[20,25],[0,25]],   properties: { accessible: true, capacity: 24, category: 'meeting' } },
+  { id: 'F2_CORRIDOR',   type: 'corridor',       name: 'Коридор 3 этажа / 3rd Floor Corridor',  polygon: [[20,3],[50,3],[50,10],[20,10]],   properties: { accessible: true } },
+  { id: 'F2_CEO',        type: 'room',           name: 'Кафедра информатики / CS Department',          polygon: [[20,0],[35,0],[35,3],[20,3]],     properties: { accessible: true, category: 'executive' } },
+  { id: 'F2_CTO',        type: 'room',           name: 'Лаборатория / Research Lab',          polygon: [[35,0],[50,0],[50,3],[35,3]],     properties: { accessible: true, category: 'executive' } },
+  { id: 'F2_LOUNGE',     type: 'room',           name: 'Читальный зал / Reading Room',      polygon: [[30,10],[58,10],[58,25],[30,25]], properties: { accessible: true, capacity: 40 } },
+  { id: 'F2_ELEVATOR',   type: 'elevator_shaft', name: 'Лифтовой холл 3 эт. / Elevator Lobby F3',   polygon: [[20,17],[30,17],[30,25],[20,25]], properties: { accessible: true } },
 ];
 
 const F2_WAYPOINTS: Waypoint[] = [
@@ -316,7 +316,7 @@ const F2_CONNECTIONS: WaypointConnection[] = [
 
 export const SECOND_FLOOR: Floor = {
   id: 'FLOOR_2',
-  name: 'Second Floor',
+  name: 'Этаж 3 / Second Floor',
   level: 2,
   heightMeters: 3.5,
   bounds: { minX: 0, minY: 0, maxX: 60, maxY: 25 },
@@ -337,7 +337,7 @@ const FLOOR_CONNECTORS: FloorConnector[] = [
   {
     id: 'CONN_ELEVATOR',
     type: 'elevator',
-    name: 'Main Elevator',
+    name: 'Главный лифт / Main Elevator',
     accessible: true,
     travelTimeSec: 15,
     connections: [
@@ -349,7 +349,7 @@ const FLOOR_CONNECTORS: FloorConnector[] = [
   {
     id: 'CONN_STAIRS',
     type: 'stairs',
-    name: 'Main Stairwell',
+    name: 'Главная лестница / Main Stairwell',
     accessible: false,
     travelTimeSec: 25,
     connections: [
@@ -364,9 +364,9 @@ const FLOOR_CONNECTORS: FloorConnector[] = [
 
 export const MOCK_BUILDING: Building = {
   id: 'BUILDING_HQ',
-  name: 'Inmap Headquarters',
-  address: '100 Innovation Drive, Tech Park',
-  geoLocation: { latitude: -23.5505, longitude: -46.6333 },
+  name: 'НГУ — Главный корпус / NSU Main Building',
+  address: 'ул. Пирогова, 1, Новосибирск / 1 Pirogova St, Novosibirsk',
+  geoLocation: { latitude: 54.8478, longitude: 83.0886 },
   floors: ALL_FLOORS,
   floorConnectors: FLOOR_CONNECTORS,
 };
